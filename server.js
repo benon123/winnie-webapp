@@ -1,125 +1,138 @@
-const mongoose = require('mongoose');
+
+if (process.env.NODE_ENV !== 'production') {
+  require('dotenv').config();
+}
+const mysql = require("mysql2");
 const express = require('express');
 const path = require('path');
 
 const app = express();
-const PORT = 3000;
-
-// Middleware
-app.use(express.static(path.join(__dirname, 'public')));
-app.use(express.urlencoded({ extended: true }));
-
-// Set view engine
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
+const cors = require("cors");
+app.use(cors({
+  origin: "*"
+}));
 
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+// middleware
+app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.urlencoded({ extended: true }));
 // Database connection
-const mysql = require('mysql2');
-
-// Create connection
-const db = mysql.createConnection({
-  host: 'localhost',
-  user: 'root',        // change if needed
-  password: '',        // your MySQL password
-  database: 'winnie'
+const connection = mysql.createConnection({
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
+  port: process.env.DB_PORT
 });
 
-// Connect to database
-db.connect((err) => {
+connection.connect(err => {
   if (err) {
-    console.log("Database connection error:", err);
-  } else {
-    console.log("Database connected successfully");
+    console.error('Database connection failed:', err.stack);
+    return;
   }
+  console.log('Connected to FreeSQLDatabase MySQL!');
 });
-
-// Routes
+// routes for HTML pages
 app.get('/', (req, res) => {
-    res.render('home');
+    res.sendFile(path.join(__dirname, 'views', 'home.html'));
 });
 
 app.get('/about', (req, res) => {
-    res.render('about');
+    res.sendFile(path.join(__dirname, 'views', 'about.html'));
 });
 
 app.get('/contact', (req, res) => {
-    res.render('contact');
+    res.sendFile(path.join(__dirname, 'views', 'contact.html'));
 });
-// Save form data
-app.post('/contact', (req, res) => {
-  const { name, email, message } = req.body;
 
-  // Basic validation
-  if (!name || !email || !message) {
-    return res.status(400).send("All fields are required");
-  }
+// Handle form submission
+app.post("/contact", (req, res) => {
+    const { name, email, message } = req.body;
 
-  const sql = "INSERT INTO contact (name, email, message) VALUES (?, ?, ?)";
+    const sql = "INSERT INTO contact (name, email, message) VALUES (?, ?, ?)";
 
-  db.query(sql, [name, email, message], (err, result) => {
-    if (err) {
-      console.log("Database error:", err);
-      return res.status(500).send("Error saving data.");
-    }
+    connection.query(sql, [name, email, message], (err, result) => {
+        if (err) {
+            console.log(err);
+            return res.status(500).json({ success: false });
+        }
 
-    res.send("Thank you! Data saved successfully.");
-  });
+        res.json({ success: true });
+    });
 });
-//view inserted data
+
 app.get('/admin/contacts', (req, res) => {
-  db.query("SELECT * FROM contact", (err, results) => {
-    if (err) {
-      console.log(err);
-      return res.send("Error fetching data");
-    }
+    const sql = "SELECT * FROM contact";
 
-    // Make sure 'results' is an array
-    if (!Array.isArray(results)) {
-      console.log(results);
-      return res.send("Invalid data returned");
-    }
+    connection.query(sql, (err, results) => {
+        if (err) {
+            console.log("🔥 MYSQL ERROR:", err);
+            return res.status(500).send("Database query failed");
+        }
 
-    res.render('admin', { contacts: results });
-  });
+        console.log("DATA LOADED:", results);
+
+        res.render('admin', { contacts: results });
+    });
 });
 //deleting contact info
 app.post('/delete/:id', (req, res) => {
-  const sql = "DELETE FROM contact WHERE id = ?";
-  const id = req.params.id;
+    console.log("DELETE REQUEST ID:", req.params.id);
 
-  db.query(sql, [id], (err, result) => {
-    if (err) {
-      console.log(err);
-      return res.send("Error deleting contact");
-    }
+    connection.query(
+        "DELETE FROM contact WHERE id = ?",
+        [req.params.id],
+        (err, result) => {
+            if (err) {
+                console.log("🔥 MYSQL DELETE ERROR:", err.sqlMessage);
+                return res.status(500).send("Delete failed");
+            }
 
-    res.redirect('/admin/contacts'); // go back to admin dashboard
-  });
+            console.log("DELETE SUCCESS:", result);
+            res.redirect('/admin/contacts');
+        }
+    );
 });
+
 //editing contact info
 app.get('/edit/:id', (req, res) => {
-  const sql = "SELECT * FROM contact WHERE id = ?";
-  
-  db.query(sql, [req.params.id], (err, results) => {
-    if (err) return res.send("Error fetching contact");
+    const sql = "SELECT * FROM contact WHERE id = ?";
 
-    if (results.length === 0) return res.send("Contact not found");
+    connection.query(sql, [req.params.id], (err, results) => {
+        if (err) {
+            console.log("DB ERROR:", err);
+            return res.status(500).send("Database error");
+        }
 
-    res.render('edit', { contact: results[0] }); // Pass to EJS
-  });
+        if (results.length === 0) {
+            return res.status(404).send("Contact not found");
+        }
+
+        res.render('edit', { contact: results[0] });
+    });
 });
 
 //updating info
 app.post('/update/:id', (req, res) => {
-  const { name, email, message } = req.body;
-  const sql = "UPDATE contact SET name = ?, email = ?, message = ? WHERE id = ?";
+    const { name, email, message } = req.body;
 
-  db.query(sql, [name, email, message, req.params.id], (err) => {
-    if (err) return res.send("Error updating contact");
+    const sql = "UPDATE contact SET name=?, email=?, message=? WHERE id=?";
 
-    res.redirect('/admin/contacts'); // Back to admin dashboard
-  });
+    connection.query(sql, [name, email, message, req.params.id], (err) => {
+        if (err) {
+            console.log("UPDATE ERROR:", err);
+            return res.status(500).send("Update failed");
+        }
+
+        res.redirect('/admin/contacts');
+    });
 });
+
+const PORT = process.env.PORT || 3000;
+
 app.listen(PORT, () => {
-    console.log(`Server running at http://localhost:${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
