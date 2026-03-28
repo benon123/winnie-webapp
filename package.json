@@ -1,0 +1,17 @@
+{
+  "name": "web-assignment",
+  "version": "1.0.0",
+  "description": "Programming Principles and Web-Based Application Development Assignment",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "author": "Daphine Mpirirwe",
+  "license": "ISC",
+  "dependencies": {
+    "ejs": "^3.1.9",
+    "express": "^4.18.2",
+    "mongoose": "^9.2.4",
+    "mysql2": "^3.20.0"
+  }
+}
